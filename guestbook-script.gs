@@ -1,8 +1,7 @@
 /**
  * Guest book for Mazen & Manar's wedding page.
- * Paste this whole file into Google Sheets: Extensions > Apps Script.
  * Every wish is saved as a row in the "Wishes" tab.
- * To hide a wish from the page, type  no  in its "Show" column.
+ * Wishes are PRIVATE: the page can only send new wishes, it can never read them.
  */
 const SHEET_NAME = 'Wishes';
 
@@ -11,21 +10,15 @@ function sheet_() {
   let sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) {
     sh = ss.insertSheet(SHEET_NAME);
-    sh.appendRow(['Time', 'Name', 'Wish', 'Show (yes / no)']);
+    sh.appendRow(['Time', 'Name', 'Wish']);
     sh.setFrozenRows(1);
   }
   return sh;
 }
 
-// The page reads the wishes (newest first)
+// Nothing is ever returned to the public
 function doGet() {
-  const values = sheet_().getDataRange().getValues().slice(1);
-  const rows = values
-    .filter(r => r[1] && r[2] && String(r[3]).trim().toLowerCase() !== 'no')
-    .map(r => ({ time: r[0], name: String(r[1]), message: String(r[2]) }))
-    .reverse()
-    .slice(0, 300);
-  return json_({ ok: true, rows: rows });
+  return json_({ ok: true });
 }
 
 // The page sends a new wish
@@ -39,11 +32,11 @@ function doPost(e) {
 
     const lock = LockService.getScriptLock();
     lock.waitLock(5000);
-    sheet_().appendRow([new Date(), safe_(name), safe_(message), 'yes']);
+    sheet_().appendRow([new Date(), safe_(name), safe_(message)]);
     lock.releaseLock();
     return json_({ ok: true });
   } catch (err) {
-    return json_({ ok: false, error: String(err) });
+    return json_({ ok: false });
   }
 }
 
