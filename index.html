@@ -113,7 +113,7 @@ input:focus,textarea:focus,.btn:focus-visible{outline:3px solid rgba(140,58,75,.
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 .row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:15px;color:#8a5a62}
 .status{min-height:24px;text-align:center;font-style:italic;color:var(--rose);margin:0}
-.note{text-align:center;color:#8a5a62;font-size:16px;font-style:italic;margin:14px 0 0;position:relative}
+.tally{text-align:center;color:#8a5a62;font-size:16px;margin:20px 0 12px}
 .wishes{display:grid;gap:12px;list-style:none;margin:0;padding:0;position:relative}
 .wish{background:#fffaf8;border:1px solid rgba(168,120,63,.35);border-radius:14px;padding:14px 16px}
 .wish p{margin:0 0 8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:19px}
@@ -268,7 +268,8 @@ body.locked{overflow:hidden}
         <div class="row"><span id="gb-left">600 characters left</span><button class="btn" id="gb-send" type="submit">Send wish</button></div>
         <p class="status" id="gb-status" role="status" aria-live="polite"></p>
       </form>
-      <p class="note">Your wish goes privately to Mazen &amp; Manar ♡</p>
+      <p class="tally" id="gb-count"></p>
+      <ul class="wishes" id="gb-list"><li class="empty">Loading wishes…</li></ul>
     </div>
   </section>
 
@@ -343,9 +344,26 @@ body.locked{overflow:hidden}
   const io = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } }), {threshold:.15});
   document.querySelectorAll(".rv").forEach(el => io.observe(el));
 
-  // Guest book: wishes are sent privately to the couple's Google Sheet, never shown on the page
-  const form = $("gb-form"), status = $("gb-status"), send = $("gb-send");
-  const nameEl = $("gb-name"), msgEl = $("gb-msg"), left = $("gb-left");
+  // Guest book
+  const form = $("gb-form"), list = $("gb-list"), status = $("gb-status"), send = $("gb-send");
+  const nameEl = $("gb-name"), msgEl = $("gb-msg"), left = $("gb-left"), tally = $("gb-count");
+  let wishes = [];
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const isAr = s => /[\u0600-\u06FF]/.test(s);
+  const fmt = t => { const d = new Date(t); return isNaN(d) ? "" : d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
+  function render(fresh){
+    if(!wishes.length){ list.innerHTML = '<li class="empty">Be the first to leave a wish ♡</li>'; tally.textContent = ""; return; }
+    tally.textContent = wishes.length === 1 ? "1 wish so far" : wishes.length + " wishes so far";
+    list.innerHTML = wishes.map((w,i) => `<li class="wish"${fresh && i===0 ? ' style="border-color:var(--rose)"' : ""}>
+      <p dir="${isAr(w.message) ? "rtl" : "ltr"}">${esc(w.message)}</p>
+      <div class="by"><b dir="auto">${esc(w.name)}</b><span>${fmt(w.time)}</span></div></li>`).join("");
+  }
+  async function load(){
+    try{
+      const r = await fetch(GUESTBOOK_URL, {cache:"no-store"}); const d = await r.json();
+      wishes = Array.isArray(d.rows) ? d.rows : []; render(false);
+    }catch(e){ list.innerHTML = '<li class="empty">Wishes could not load right now. Please refresh in a moment.</li>'; }
+  }
   msgEl.addEventListener("input", () => { left.textContent = (600 - msgEl.value.length) + " characters left"; });
   form.addEventListener("submit", async e => {
     e.preventDefault();
@@ -354,12 +372,13 @@ body.locked{overflow:hidden}
     send.disabled = true; status.textContent = "Sending your wish…";
     try{
       const r = await fetch(GUESTBOOK_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify({name, message, website: $("gb-web").value})});
-      const d = await r.json(); if(!d.ok) throw new Error("failed");
-      nameEl.value = ""; msgEl.value = ""; left.textContent = "600 characters left";
-      status.textContent = "Thank you! Your wish was sent to Mazen & Manar ♡";
+      const d = await r.json(); if(!d.ok) throw new Error(d.error || "failed");
+      wishes.unshift({name, message, time: new Date().toISOString()}); render(true);
+      msgEl.value = ""; left.textContent = "600 characters left"; status.textContent = "Thank you! Your wish was added ♡";
     }catch(err){ status.textContent = "Sorry, that did not send. Please try again."; }
     finally{ send.disabled = false; }
   });
+  load();
 }
 </script>
 </body>
