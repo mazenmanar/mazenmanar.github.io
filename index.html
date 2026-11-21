@@ -358,11 +358,26 @@ body.locked{overflow:hidden}
       <p dir="${isAr(w.message) ? "rtl" : "ltr"}">${esc(w.message)}</p>
       <div class="by"><b dir="auto">${esc(w.name)}</b><span>${fmt(w.time)}</span></div></li>`).join("");
   }
+  const CACHE_KEY = "mm-wishes";
+  const saveCache = () => { try{ localStorage.setItem(CACHE_KEY, JSON.stringify(wishes.slice(0,300))); }catch(e){} };
+  try{ const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); if(Array.isArray(c) && c.length){ wishes = c; render(false); } }catch(e){}
+  const getJSON = async (ms) => {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+    try{ const r = await fetch(GUESTBOOK_URL + "?t=" + Date.now(), {signal: ctrl.signal}); if(!r.ok) throw new Error("HTTP " + r.status); return await r.json(); }
+    finally{ clearTimeout(t); }
+  };
   async function load(){
-    try{
-      const r = await fetch(GUESTBOOK_URL, {cache:"no-store"}); const d = await r.json();
-      wishes = Array.isArray(d.rows) ? d.rows : []; render(false);
-    }catch(e){ list.innerHTML = '<li class="empty">Wishes could not load right now. Please refresh in a moment.</li>'; }
+    for(let attempt = 0; attempt < 3; attempt++){
+      try{
+        const d = await getJSON(12000 + attempt * 6000);
+        if(!Array.isArray(d.rows)) throw new Error("bad data");
+        wishes = d.rows; render(false); saveCache(); return;
+      }catch(e){ await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); }
+    }
+    if(!wishes.length){
+      list.innerHTML = '<li class="empty">Wishes are taking a moment to load. <button class="btn ghost" type="button" id="gb-retry" style="margin-top:10px">Try again</button></li>';
+      const b = document.getElementById("gb-retry"); if(b) b.addEventListener("click", () => { list.innerHTML = '<li class="empty">Loading wishes…</li>'; load(); });
+    }
   }
   msgEl.addEventListener("input", () => { left.textContent = (600 - msgEl.value.length) + " characters left"; });
   form.addEventListener("submit", async e => {
@@ -373,7 +388,7 @@ body.locked{overflow:hidden}
     try{
       const r = await fetch(GUESTBOOK_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify({name, message, website: $("gb-web").value})});
       const d = await r.json(); if(!d.ok) throw new Error(d.error || "failed");
-      wishes.unshift({name, message, time: new Date().toISOString()}); render(true);
+      wishes.unshift({name, message, time: new Date().toISOString()}); render(true); saveCache();
       msgEl.value = ""; left.textContent = "600 characters left"; status.textContent = "Thank you! Your wish was added ♡";
     }catch(err){ status.textContent = "Sorry, that did not send. Please try again."; }
     finally{ send.disabled = false; }
